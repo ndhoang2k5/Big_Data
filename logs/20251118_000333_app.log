@@ -1,0 +1,1 @@
+2025-11-18 00:03:33,271 - stock_prediction_app - INFO - Initializing Spark Session for app: StockFeatureEngineering on master: local[*]
