@@ -1,26 +1,44 @@
-# stock_price_prediction/src/feature_engineering/pyspark_processor.py
+import sys
+import os
+current_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.abspath(os.path.join(current_dir, '..', '..'))
+if project_root not in sys.path:
+    sys.path.append(project_root)
 
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import col, from_json, current_timestamp, window, avg, round, lit, current_date, hour, minute, struct, to_json
+from pyspark.sql.functions import col, from_json, current_timestamp, window, avg, round, concat_ws, current_date, hour, minute
 from pyspark.sql.types import StructType, StructField, StringType, DoubleType, LongType, TimestampType
-from src.feature_engineering.spark_utils import get_spark_session
+from src.feature_engineering.spark_utils import get_spark_session # <-- Lỗi này sẽ được khắc phục
 
-# Import config, nếu chưa có BATCH_INTERVAL_SECONDS hoặc CHECKPOINT_LOCATION thì đặt mặc định
 try:
     from src.feature_engineering.config import (
         KAFKA_BROKER_SERVERS,
         KAFKA_RAW_DATA_TOPIC,
-        KAFKA_FEATURES_TOPIC,
         BATCH_INTERVAL_SECONDS,
-        CHECKPOINT_LOCATION
+        CHECKPOINT_LOCATION,
+        MONGO_URI, 
+        MONGO_DATABASE, 
+        MONGO_COLLECTION_FEATURES 
     )
 except ImportError:
-    # Giá trị mặc định cho môi trường dev/local nếu config không tồn tại
-    KAFKA_BROKER_SERVERS = "kafka:9092"
+    # Fallback cho môi trường dev/test
+    KAFKA_BROKER_SERVERS = "localhost:9092"
     KAFKA_RAW_DATA_TOPIC = "stock_raw_data"
-    KAFKA_FEATURES_TOPIC = "stock_features_data"
-    BATCH_INTERVAL_SECONDS = 5
-    CHECKPOINT_LOCATION = "/tmp/spark/checkpoint"
+    BATCH_INTERVAL_SECONDS = 15 
+    CHECKPOINT_LOCATION = "/tmp/spark/checkpoint" # Dùng đường dẫn trong container để tránh lỗi
+    MONGO_URI = "mongodb://mongo:27017/stock_data_db" # Dùng tên service nội bộ
+    MONGO_DATABASE = "stock_data_db"
+    MONGO_COLLECTION_FEATURES = "stock_features_realtime"
+    
+# Cần import logger để sử dụng trong hàm process_data
+try:
+    from src.utils.logger import app_logger
+except ImportError:
+    class MockLogger:
+        def info(self, msg): print(f"[INFO] {msg}")
+        def error(self, msg): print(f"[ERROR] {msg}")
+    app_logger = MockLogger()
+
 
 def create_raw_schema():
     """Định nghĩa schema cho dữ liệu JSON thô từ Kafka."""
@@ -37,7 +55,7 @@ def create_raw_schema():
     ])
 
 def process_data():
-    """Luồng xử lý chính: đọc từ Kafka, tạo feature, ghi ra Kafka."""
+    """Luồng xử lý chính: đọc từ Kafka, tạo feature, ghi ra MongoDB."""
     spark = get_spark_session()
     raw_schema = create_raw_schema()
 
@@ -50,7 +68,7 @@ def process_data():
         .option("startingOffsets", "latest") \
         .load()
 
-    # Giải mã Value (JSON string) và thêm các trường metadata
+    # Giải mã Value (chuỗi JSON) và thêm các trường metadata
     df_parsed = df_raw.select(
         from_json(col("value").cast("string"), raw_schema).alias("data"),
         col("timestamp").alias("kafka_ingestion_time")
@@ -66,14 +84,12 @@ def process_data():
         "ingestion_minute", minute(col("processed_timestamp"))
     )
 
-    print(f"[INFO] Reading from Kafka topic: {KAFKA_RAW_DATA_TOPIC} from broker: {KAFKA_BROKER_SERVERS}")
-    print("Schema after parsing:")
-    df_parsed.printSchema()
-
-    # 2️⃣ Tạo Feature: Moving Average (trung bình giá và volume trong 10 giây cuối)
+    app_logger.info(f"Reading from Kafka topic: {KAFKA_RAW_DATA_TOPIC} from broker: {KAFKA_BROKER_SERVERS}")
+    
     df_features = df_parsed.withWatermark("processed_timestamp", "1 minute") \
         .groupBy(
             col("symbol"),
+            # Cửa sổ trượt 10 giây, trượt mỗi 5 giây
             window(col("processed_timestamp"), "10 seconds", "5 seconds")
         ) \
         .agg(
@@ -82,37 +98,28 @@ def process_data():
         ) \
         .select(
             col("symbol"),
-            col("window.start").alias("window_start_time"),
-            col("window.end").alias("window_end_time"),
+            col("window.end").alias("window_timestamp"), 
             col("avg_price_10s"),
             col("avg_volume_10s")
         )
 
-    # Xử lý giá trị NULL (nếu không có dữ liệu trong 10s đầu)
-    df_features = df_features.fillna(0)
-
-    # 4️⃣ Chuyển thành JSON để gửi Kafka
-    # Dùng struct và to_json để đảm bảo cột 'value' là String (bắt buộc cho Kafka Sink)
-    # Lấy tất cả các cột trừ 'symbol' làm value, và 'symbol' làm key.
-    # Trong trường hợp này, ta gói gọn toàn bộ df_features thành JSON.
-    df_final = df_features.select(
-        col("symbol").alias("key"),
-        to_json(struct(df_features["*"])).alias("value")
+    # 3️⃣ Chuẩn bị dữ liệu cho MongoDB
+    df_mongo_ready = df_features.withColumn(
+        "_id", 
+        concat_ws("-", col("symbol"), col("window_timestamp"))
     )
-    
-    print(f"[INFO] Ready to write features to Kafka topic: {KAFKA_FEATURES_TOPIC} on broker: {KAFKA_BROKER_SERVERS}")
 
-    # 5️⃣ Viết ra Kafka Sink
-    query = df_final.select(
-        col("key").cast(StringType()),  # Đảm bảo key là String
-        col("value").cast(StringType()) # Đảm bảo value là String
-    ) \
+    app_logger.info(f"Ready to write features to MongoDB: {MONGO_DATABASE}.{MONGO_COLLECTION_FEATURES} at {MONGO_URI}")
+
+    # 4️⃣ Viết ra MongoDB Sink (Streaming)
+    query = df_mongo_ready \
         .writeStream \
-        .format("kafka") \
-        .option("kafka.bootstrap.servers", KAFKA_BROKER_SERVERS) \
-        .option("topic", KAFKA_FEATURES_TOPIC) \
-        .outputMode("update") \
+        .format("mongodb") \
+        .option("uri", MONGO_URI) \
+        .option("database", MONGO_DATABASE) \
+        .option("collection", MONGO_COLLECTION_FEATURES) \
         .option("checkpointLocation", CHECKPOINT_LOCATION) \
+        .outputMode("update") \
         .trigger(processingTime=f"{BATCH_INTERVAL_SECONDS} seconds") \
         .start()
 
@@ -122,18 +129,11 @@ if __name__ == "__main__":
     try:
         process_data()
     except Exception as e:
-        print(f"[ERROR] Spark streaming failed: {e}")
-        # Đảm bảo logger được import và sử dụng đúng cách
-        try:
-            from src.utils.logger import app_logger
-            app_logger.error(f"Spark streaming failed: {e}")
-        except ImportError:
-            pass
+        app_logger.error(f"Spark streaming failed: {e}")
     finally:
-        # Đảm bảo Spark session dừng (nếu nó được khởi tạo)
         try:
             spark = SparkSession.builder.getOrCreate()
             spark.stop()
-            print("[INFO] Spark session stopped.")
+            app_logger.info("Spark session stopped.")
         except Exception:
             pass
