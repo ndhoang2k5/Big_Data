@@ -1,10 +1,11 @@
 # stock_price_prediction/src/data_ingestion/config.py
 
 # Kafka Configuration
-# SỬ DỤNG localhost:9093 vì Producer chạy trên Host và Kafka expose qua port 9093
-KAFKA_BROKER = "localhost:9093"  
+# CHỈNH SỬA: SỬ DỤNG TÊN SERVICE CỦA KAFKA TRONG DOCKER COMPOSE NETWORK.
+# Mặc định là 'kafka' và port là 9092.
+KAFKA_BROKER = "localhost:9092" 
 KAFKA_TOPIC = "stock_raw_data"
-MESSAGE_RATE_PER_SECOND = 250
+MESSAGE_RATE_PER_SECOND = 500
 
 # Simulated Stock API Configuration
 STOCK_SYMBOLS = ["VCB", "HPG", "FPT", "VIC", "VNM", "MWG", "PNJ", "SSI", "TPB", "POW"]
