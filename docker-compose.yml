@@ -2,74 +2,29 @@ version: '3.8'
 
 services:
   zookeeper:
-    image: confluentinc/cp-zookeeper:7.0.1
-    hostname: zookeeper
-    container_name: zookeeper
-    ports:
-      - "2181:2181"
+    image: confluentinc/cp-zookeeper:7.4.0
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
-    restart: always # Tự động khởi động lại nếu có lỗi
 
   kafka:
-    image: confluentinc/cp-kafka:7.0.1
-    hostname: kafka
-    container_name: kafka
+    image: confluentinc/cp-kafka:7.4.0
+    depends_on:
+      - zookeeper
     ports:
       - "9092:9092"
-      - "9093:9093"
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
-      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+  data-ingestion:
+    build:
+      context: .
+      dockerfile: Dockerfile.data-ingestion
     depends_on:
-      - zookeeper
-    restart: always # Tự động khởi động lại nếu có lỗi
-
-  spark-master:
-    image: docker.io/apache/spark:3.5.0
-    hostname: spark-master
-    container_name: spark-master
-    ports:
-      - "8080:8080" # UI Spark Master
-      - "7077:7077" # Spark Master Port
-    environment:
-      SPARK_MODE: master
-      SPARK_RPC_AUTHENTICATION_ENABLED: "no"
-      SPARK_RPC_ENCRYPTION_ENABLED: "no"
-      SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED: "no"
-      SPARK_SSL_ENABLED: "no"
-      SPARK_MASTER_WEBUI_PORT: 8080
-    volumes:
-      - ./src:/opt/spark/work-dir/src
-    # 🌟 Lệnh khởi động Spark Master để giữ container chạy
-    command: ["/opt/spark/bin/spark-class", "org.apache.spark.deploy.master.Master"]
-    restart: always
-
-  spark-worker:
-    image: docker.io/apache/spark:3.5.0
-    hostname: spark-worker
-    container_name: spark-worker
-    environment:
-      SPARK_MODE: worker
-      SPARK_MASTER_URL: spark://spark-master:7077
-      SPARK_WORKER_CORES: 1
-      SPARK_WORKER_MEMORY: 1G
-      SPARK_RPC_AUTHENTICATION_ENABLED: "no"
-      SPARK_RPC_ENCRYPTION_ENABLED: "no"
-      SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED: "no"
-      SPARK_SSL_ENABLED: "no"
-    depends_on:
-      - spark-master
       - kafka
     volumes:
-      - ./src:/opt/spark/work-dir/src
-    # 🌟 Lệnh khởi động Spark Worker và kết nối với Master
-    command: ["/opt/spark/bin/spark-class", "org.apache.spark.deploy.worker.Worker", "spark://spark-master:7077"]
-    restart: always
+      - ./src:/app/src
