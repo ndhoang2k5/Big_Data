@@ -1,9 +1,12 @@
-# stock_price_prediction/src/data_ingestion/config.py
+# --- START OF FILE config.py ---
+import os
 
-# Kafka Configuration
-# SỬ DỤNG CỔNG BÊN NGOÀI (HOST) CHO PRODUCER (docker-compose ánh xạ 9092:9092)
-KAFKA_BROKER = "localhost:9092" 
-KAFKA_TOPIC = "stock_raw_data"
-MESSAGE_RATE_PER_SECOND = 200
+KAFKA_BOOTSTRAP_SERVERS = ['kafka:29092']
+# SỬA: Đổi tên topic trùng khớp với docker-compose và spark
+KAFKA_TOPIC = 'stock_data' 
 
-STOCK_SYMBOLS = ["VCB", "HPG", "FPT", "VIC", "VNM", "MWG", "PNJ", "SSI", "TPB", "POW"]
+STOCK_API_URL = "https://api.example.com/v1/market/ticks"
+API_KEY = os.getenv("STOCK_API_KEY", "your_api_key_here")
+
+SYMBOLS = ["HPG", "VIC", "VNM", "FPT", "TCB"]
+TICK_INTERVAL = 0.5
