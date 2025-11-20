@@ -1,12 +1,12 @@
 # stock_prediction_app/src/feature_engineering/config.py
 
-# Kafka Configuration (Spark dùng tên service nội bộ)
-KAFKA_BROKER = "kafka:9093" 
-KAFKA_TOPIC = "stock_raw_data"
+KAFKA_BROKER_SERVERS = "kafka:9093" 
+KAFKA_RAW_DATA_TOPIC = "stock_raw_data"
 
-# MongoDB Configuration (Spark dùng tên service nội bộ)
-# 🚨 CHẮC CHẮN DÙNG TÊN SERVICE "mongo"
+BATCH_INTERVAL_SECONDS = 15
+
+CHECKPOINT_LOCATION = "/tmp/spark/checkpoint/stock_features"
+SPARK_MASTER_URL = "spark://spark-master:7077"
 MONGO_URI = "mongodb://mongo:27017" 
 MONGO_DATABASE = "stock_data_db"
-MONGO_COLLECTION = "stock_features_realtime"
-# ...
+MONGO_COLLECTION_FEATURES = "stock_features_realtime"
