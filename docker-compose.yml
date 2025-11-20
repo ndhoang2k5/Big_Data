@@ -42,13 +42,10 @@ services:
         
         echo 'INIT: Topic stock_data is ready. Exiting initializer.'
       "
-  
-  # BỔ SUNG: Consumer kiểm tra để xác nhận dữ liệu đang được đẩy vào Kafka
   kafka-test-consumer:
     image: confluentinc/cp-kafka:7.4.0
     depends_on:
       - kafka-topic-initializer
-    # GIỮ NGUYÊN: Vẫn dùng kiểm tra động vì image này có công cụ Kafka
     command: |
       sh -c "
         echo 'TEST: Dynamically waiting for Kafka Broker to be fully registered...';
@@ -70,10 +67,9 @@ services:
       context: .
       dockerfile: Dockerfile.data-ingestion
     depends_on:
-      - kafka-topic-initializer # Bây giờ phụ thuộc vào topic đã được tạo
+      - kafka-topic-initializer
     volumes:
       - ./src:/app/src
-    # ĐÃ SỬA: Cập nhật tên file thành stock_api_consumer.py
     command: |
       sh -c "
         echo 'PRODUCER: Waiting 15 seconds for Kafka and Topic Initializer to complete...';
@@ -81,7 +77,7 @@ services:
         echo 'PRODUCER: Kafka Broker is assumed ready. Starting producer...';
         
         # ĐÃ SỬA: Trỏ đúng vào tên file mới
-        python /app/src/data_ingestion/stock_api_consumer.py
+        python -u /app/src/data_ingestion/stock_api_consumer.py
       "
 
   mongodb:
@@ -104,7 +100,6 @@ services:
     working_dir: /app
     environment: 
       SPARK_LOG_LEVEL: WARN
-    # SỬA Ở ĐÂY: Đưa toàn bộ lệnh spark-submit về 1 dòng dài
     command: >
       sh -c "
         echo 'SPARK: Waiting 20 seconds for ecosystem...';
@@ -112,3 +107,17 @@ services:
         echo 'SPARK: Submitting Job...';
         /opt/spark/bin/spark-submit --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.1,org.mongodb.spark:mongo-spark-connector_2.12:10.3.0 src/feature_engineering/pyspark_processor.py
       "
+  dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile.dashboard
+    container_name: streamlit_dashboard
+    ports:
+      - "8051:8051"
+    depends_on:
+      - mongodb
+    volumes:
+      # Mount volume để bạn sửa code app.py thì dashboard tự cập nhật không cần rebuild
+      - ./src/dashboard:/app/src/dashboard
+    environment:
+      - MONGO_URI=mongodb://mongodb:27017/
