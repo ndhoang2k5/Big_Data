@@ -22,12 +22,10 @@ services:
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT_INTERNAL # Bắt buộc phải sử dụng internal listener name
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
 
-  # DỊCH VỤ MỚI: Đảm bảo Topic được tạo thành công
   kafka-topic-initializer:
     image: confluentinc/cp-kafka:7.4.0
     depends_on:
       - kafka
-    # GIỮ NGUYÊN: Vẫn dùng kiểm tra động vì image này có công cụ Kafka
     command: |
       sh -c "
         echo 'INIT: Dynamically waiting for Kafka Broker to be fully registered...';
@@ -117,7 +115,6 @@ services:
     depends_on:
       - mongodb
     volumes:
-      # Mount volume để bạn sửa code app.py thì dashboard tự cập nhật không cần rebuild
       - ./src/dashboard:/app/src/dashboard
     environment:
       - MONGO_URI=mongodb://mongodb:27017/
