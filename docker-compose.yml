@@ -118,3 +118,17 @@ services:
       - ./src/dashboard:/app/src/dashboard
     environment:
       - MONGO_URI=mongodb://mongodb:27017/
+
+  predictor:
+    build:
+      context: .
+      dockerfile: Dockerfile.predictor
+    container_name: final_predictor
+    restart: always
+    depends_on:
+      - mongodb
+      - spark-processor
+    volumes:
+      - ./src:/app/src
+    environment:
+      - MONGO_URI=mongodb://mongodb:27017/
