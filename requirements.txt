@@ -6,5 +6,4 @@ tensorflow
 scikit-learn
 requests
 kafka-python==2.0.2
-requests
-numpy
+kafka-python
