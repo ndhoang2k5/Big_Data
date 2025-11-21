@@ -26,8 +26,7 @@ def setup_logger(name, log_file='app.log', level=logging.INFO):
     logger = logging.getLogger(name)
     logger.setLevel(level)
     logger.addHandler(handler)
-    logger.addHandler(console_handler) # In ra console
+    logger.addHandler(console_handler)
     return logger
 
-# Logger mặc định cho toàn bộ ứng dụng
 app_logger = setup_logger('stock_prediction_app')
