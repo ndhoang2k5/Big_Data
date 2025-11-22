@@ -2,8 +2,7 @@
 
 Dự án xây dựng một **Big Data Pipeline** khép kín (End-to-End) để thu thập, xử lý và dự đoán xu hướng giá cổ phiếu Việt Nam theo thời gian thực. Hệ thống sử dụng kiến trúc Microservices, kết hợp giữa xử lý luồng (Stream Processing) và Trí tuệ nhân tạo (Deep Learning).
 
-![Mô hình dự án](images/architecture_diagram.png) 
-*(Thay ảnh kiến trúc hệ thống của bạn vào đây)*
+![Mô hình dự án](image.png)
 
 ## 🚀 Tính năng chính
 
