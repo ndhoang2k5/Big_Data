@@ -1,9 +1,0 @@
-pyspark==3.4.0
-pymongo
-pandas
-numpy
-tensorflow
-scikit-learn
-requests
-kafka-python==2.0.2
-kafka-python

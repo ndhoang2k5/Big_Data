@@ -1,7 +1,0 @@
-FROM python:3.9-slim
-WORKDIR /app
-RUN pip install pymongo pandas numpy scikit-learn
-COPY src/ ./src/
-# Thêm PYTHONPATH để Python tìm thấy các module trong src
-ENV PYTHONPATH="${PYTHONPATH}:/app"
-CMD ["python", "-u", "/app/src/deep_learning_models/model_inference.py"]
