@@ -46,7 +46,7 @@ FINAL_PROJECT/
 ├── Dockerfile.predictor        # File build image cho AI Model
 └── README.md                   # Hướng dẫn sử dụng
 
-
+```
 
 readme_content = """# ⚙️ Hướng dẫn Cài đặt và Chạy
 
@@ -116,4 +116,5 @@ Giao diện được chia thành 3 biểu đồ chính để hỗ trợ ra quy�
 ### 3. Biểu đồ bị giật hoặc mất kết nối
 
   * Nhấn F5 (Refresh) lại trang trình duyệt. Hệ thống đã được tối ưu để tự động kết nối lại.
+
 """
