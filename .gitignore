@@ -1,0 +1,11 @@
+﻿.venv/
+__pycache__/
+checkpoint/
+*.crc
+data/
+zookeeper-data/
+zookeeper-log/
+kafka-data/
+*.log
+*.tmp
+*.pyc

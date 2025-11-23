@@ -1,0 +1,144 @@
+services:
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.4.0
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+
+  kafka:
+    image: confluentinc/cp-kafka:7.4.0
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      # CẤU HÌNH SỬA LỖI KAFKA NETWORK CHO DOCKER
+      KAFKA_LISTENERS: PLAINTEXT_INTERNAL://0.0.0.0:29092,PLAINTEXT_EXTERNAL://0.0.0.0:9092
+      # ĐÃ SỬA: Thay địa chỉ không phân giải (2061215) bằng tên dịch vụ (kafka)
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT_INTERNAL://kafka:29092,PLAINTEXT_EXTERNAL://kafka:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT_INTERNAL:PLAINTEXT,PLAINTEXT_EXTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT_INTERNAL # Bắt buộc phải sử dụng internal listener name
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+
+  kafka-topic-initializer:
+    image: confluentinc/cp-kafka:7.4.0
+    depends_on:
+      - kafka
+    command: |
+      sh -c "
+        echo 'INIT: Dynamically waiting for Kafka Broker to be fully registered...';
+        while ! /bin/kafka-broker-api-versions --bootstrap-server kafka:29092; do 
+          sleep 5; 
+        done;
+        
+        echo 'INIT: Kafka Broker is RESPONSIVE. Creating topic...';
+
+        # Sửa lỗi cú pháp multi-line
+        /bin/kafka-topics --bootstrap-server kafka:29092 --topic stock_data --create --partitions 1 --replication-factor 1 --if-not-exists;
+        
+        echo 'INIT: Topic stock_data is ready. Exiting initializer.'
+      "
+  kafka-test-consumer:
+    image: confluentinc/cp-kafka:7.4.0
+    depends_on:
+      - kafka-topic-initializer
+    command: |
+      sh -c "
+        echo 'TEST: Dynamically waiting for Kafka Broker to be fully registered...';
+        while ! /bin/kafka-broker-api-versions --bootstrap-server kafka:29092; do 
+          sleep 5; 
+        done;
+        
+        echo 'TEST: Kafka Broker is RESPONSIVE. Waiting 10s for producer to send data...';
+        sleep 10;
+        
+        echo 'TEST: Starting test consumer to verify data flow...';
+        # ĐÃ SỬA: Đặt lệnh consumer vào MỘT DÒNG logic
+        /bin/kafka-console-consumer --bootstrap-server kafka:29092 --topic stock_data --from-beginning --max-messages 10 --timeout-ms 20000;
+        echo 'TEST: Test consumer finished.';
+      "
+
+  data-ingestion:
+    build:
+      context: .
+      dockerfile: Dockerfile.data-ingestion
+    restart: always 
+    depends_on:
+      - kafka-topic-initializer
+    volumes:
+      - ./src:/app/src
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - KAFKA_TOPIC=stock_data
+      - DATA_MODE=MOCK
+      # Tốc độ gửi tin (giây). Mock nên để 1.0, Real nên để 5.0
+      - TICK_INTERVAL=1.0
+    # dns:
+    #   - 8.8.8.8
+    #   - 8.8.4.4
+
+    command: |
+      sh -c "
+        echo 'PRODUCER: Waiting 15 seconds for Kafka and Topic Initializer to complete...';
+        sleep 15;
+        echo 'PRODUCER: Kafka Broker is assumed ready. Starting producer...';
+        
+        python -u /app/src/data_ingestion/stock_api_consumer.py
+      "
+
+  mongodb:
+    image: mongo:6.0
+    container_name: mongodb_container
+    ports:
+      - "27017:27017"
+    volumes:
+      - ./data/mongo:/data/db
+
+  spark-processor:
+    image: apache/spark:3.5.1-scala2.12-java17-python3-r-ubuntu
+    user: root
+    depends_on:
+      - kafka-topic-initializer 
+      - mongodb
+    volumes:
+      - ./src:/app/src
+      - ./checkpoint:/app/checkpoint
+    working_dir: /app
+    environment: 
+      SPARK_LOG_LEVEL: WARN
+    command: >
+      sh -c "
+        echo 'SPARK: Waiting 20 seconds for ecosystem...';
+        sleep 20;
+        echo 'SPARK: Submitting Job...';
+        /opt/spark/bin/spark-submit --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.1,org.mongodb.spark:mongo-spark-connector_2.12:10.3.0 src/feature_engineering/pyspark_processor.py
+      "
+  dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile.dashboard
+    container_name: streamlit_dashboard
+    ports:
+      - "8051:8051"
+    depends_on:
+      - mongodb
+    volumes:
+      - ./src/dashboard:/app/src/dashboard
+    environment:
+      - MONGO_URI=mongodb://mongodb:27017/
+
+  predictor:
+    build:
+      context: .
+      dockerfile: Dockerfile.predictor
+    container_name: final_predictor
+    restart: always
+    depends_on:
+      - mongodb
+      - spark-processor
+    volumes:
+      - ./src:/app/src
+    environment:
+      - MONGO_URI=mongodb://mongodb:27017/
